@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="toolbar">
+  <button class="btn btn-primary"
+          hx-post="/scan"
+          hx-target="#scan-status"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this">Scan Now</button>
+
+  <button class="btn btn-secondary"
+          hx-post="/auto-toggle"
+          hx-swap="outerHTML"
+          style="color: {% if auto_on %}#22c55e{% else %}#888{% endif %}">
+    Auto: {% if auto_on %}On{% else %}Off{% endif %}
+  </button>
+
+  <select class="interval" name="interval"
+          hx-post="/set-interval"
+          hx-trigger="change"
+          hx-swap="none">
+    <option {% if interval == 'Every 1 min' %}selected{% endif %}>Every 1 min</option>
+    <option {% if interval == 'Every 5 min' %}selected{% endif %}>Every 5 min</option>
+    <option {% if interval == 'Every 15 min' %}selected{% endif %}>Every 15 min</option>
+  </select>
+
+  <button class="btn btn-green"
+          hx-post="/check-exits"
+          hx-target="#scan-status"
+          hx-swap="innerHTML">Check Exits</button>
+
+  <span class="spinner"></span>
+  <span id="scan-status" class="status-text">Scanning NASDAQ/NYSE · TradingView MCP</span>
+
+  <form style="display:flex;gap:6px;margin-left:auto;align-items:center;"
+        hx-post="/analyze"
+        hx-target="#analyze-status"
+        hx-swap="innerHTML"
+        hx-indicator="#analyze-spin">
+    <input name="ticker" type="text" placeholder="AAPL, NVDA…"
+           style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:20px;
+                  padding:5px 12px;font-size:12px;width:110px;outline:none;"
+           autocomplete="off" autocapitalize="characters"/>
+    <button type="submit" class="btn btn-secondary"
+            style="white-space:nowrap">Analyze + Open</button>
+    <span id="analyze-spin" class="htmx-indicator spinner"></span>
+  </form>
+</div>
+<div style="padding:6px 16px;min-height:20px;">
+  <span id="analyze-status" style="font-size:11px;"></span>
+</div>
+
+<!-- Filter bar -->
+<div id="filter-bar" style="padding:8px 16px 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #1a1a1a;">
+  <!-- Strategy pills -->
+  <div style="display:flex;gap:4px;">
+    <button class="fpill active" data-filter="strategy" data-val="">All</button>
+    <button class="fpill" data-filter="strategy" data-val="CALL">CALL</button>
+    <button class="fpill" data-filter="strategy" data-val="PUT">PUT</button>
+  </div>
+  <div style="width:1px;height:20px;background:#333;"></div>
+  <!-- Conviction pills -->
+  <div style="display:flex;gap:4px;">
+    <button class="fpill active" data-filter="conviction" data-val="">All</button>
+    <button class="fpill" data-filter="conviction" data-val="HIGH">🔥</button>
+    <button class="fpill" data-filter="conviction" data-val="MODERATE">⚡</button>
+    <button class="fpill" data-filter="conviction" data-val="NO_FLOW">📊</button>
+    <button class="fpill" data-filter="conviction" data-val="SKIP">⚠</button>
+  </div>
+  <div style="width:1px;height:20px;background:#333;"></div>
+  <!-- Test bucket pills -->
+  <div style="display:flex;gap:4px;">
+    <button class="fpill active" data-filter="bucket" data-val="">All</button>
+    <button class="fpill" data-filter="bucket" data-val="VALIDATED_TEST">VALIDATED</button>
+    <button class="fpill" data-filter="bucket" data-val="WATCH">WATCH</button>
+    <button class="fpill" data-filter="bucket" data-val="UNVALIDATED">UNVALIDATED</button>
+  </div>
+  <div style="width:1px;height:20px;background:#333;"></div>
+  <!-- Vol ratio slider -->
+  <label style="color:#666;font-size:11px;">Vol ≥ <span id="vol-val">1x</span></label>
+  <input type="range" id="vol-filter" min="1" max="10" step="0.5" value="1"
+         style="width:80px;accent-color:#6366f1;">
+  <div style="width:1px;height:20px;background:#333;"></div>
+  <!-- Date filter -->
+  <label style="color:#666;font-size:11px;">Date</label>
+  <select id="date-filter" style="background:#1a1a1a;color:#ccc;border:1px solid #333;border-radius:6px;padding:3px 8px;font-size:11px;">
+    <option value="">All time</option>
+    <option value="today">Today</option>
+    <option value="week">This week</option>
+  </select>
+  <div style="width:1px;height:20px;background:#333;"></div>
+  <!-- Ticker search -->
+  <input id="ticker-search" type="text" placeholder="Search ticker…"
+         style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:20px;
+                padding:4px 12px;font-size:11px;width:120px;outline:none;">
+  <span id="filter-count" style="margin-left:auto;color:#555;font-size:11px;"></span>
+</div>
+
+<style>
+.fpill {
+  background: #1a1a1a; color: #666; border: 1px solid #333;
+  border-radius: 20px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+  transition: all .15s;
+}
+.fpill.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+.fpill:hover:not(.active) { border-color: #555; color: #aaa; }
+</style>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>SYMBOL</th>
+        <th>FLOW STRATEGY</th>
+        <th>TEST BUCKET</th>
+        <th>CONTRACT BUCKET</th>
+        <th>CONVICTION</th>
+        <th>DATE/TIME</th>
+      </tr>
+    </thead>
+    <tbody id="signal-rows"
+           hx-get="/flow-trades/rows"
+           hx-trigger="every 30s"
+           hx-swap="innerHTML"
+           hx-on::after-swap="applyFilters()">
+      {% include "partials/signal_rows.html" %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function() {
+  var filters = { strategy: '', conviction: '', bucket: '', vol: 1, date: '', ticker: '' };
+
+  function applyFilters() {
+    var rows = document.querySelectorAll('#signal-rows tr');
+    var visible = 0;
+    rows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      if (cells.length < 6) { row.style.display = ''; return; }
+
+      var strategy  = cells[1].textContent.trim();
+      var bucket    = cells[2].textContent.trim();
+      var contract  = cells[3].textContent.trim();
+      var conviction = cells[4].textContent.trim();
+      var dateText  = cells[5].textContent.trim();
+      var ticker    = cells[0].textContent.trim();
+
+      var volMatch = contract.match(/Vol:\s*([\d.]+)x/);
+      var vol = volMatch ? parseFloat(volMatch[1]) : 0;
+
+      var show = true;
+
+      if (filters.strategy && !strategy.includes(filters.strategy)) show = false;
+      if (filters.conviction && !conviction.includes(filters.conviction)) show = false;
+      if (filters.bucket && !bucket.includes(filters.bucket)) show = false;
+      if (filters.vol > 1 && vol < filters.vol) show = false;
+      if (filters.ticker && !ticker.toUpperCase().includes(filters.ticker.toUpperCase())) show = false;
+
+      if (filters.date && dateText) {
+        var today = new Date(); today.setHours(0,0,0,0);
+        var parts = dateText.match(/(\d{4}-\d{2}-\d{2})/);
+        if (parts) {
+          var rowDate = new Date(parts[1]);
+          if (filters.date === 'today' && rowDate < today) show = false;
+          if (filters.date === 'week') {
+            var weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+            if (rowDate < weekAgo) show = false;
+          }
+        }
+      }
+
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    var total = Array.from(rows).filter(r => r.querySelectorAll('td').length >= 6).length;
+    var el = document.getElementById('filter-count');
+    if (el) el.textContent = visible + ' / ' + total + ' signals';
+  }
+
+  window.applyFilters = applyFilters;
+
+  document.querySelectorAll('.fpill').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var group = this.dataset.filter;
+      document.querySelectorAll('.fpill[data-filter="' + group + '"]').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      this.classList.add('active');
+      filters[group] = this.dataset.val;
+      applyFilters();
+    });
+  });
+
+  var volSlider = document.getElementById('vol-filter');
+  volSlider.addEventListener('input', function() {
+    filters.vol = parseFloat(this.value);
+    document.getElementById('vol-val').textContent = this.value + 'x';
+    applyFilters();
+  });
+
+  document.getElementById('date-filter').addEventListener('change', function() {
+    filters.date = this.value;
+    applyFilters();
+  });
+
+  document.getElementById('ticker-search').addEventListener('input', function() {
+    filters.ticker = this.value.trim();
+    applyFilters();
+  });
+
+  applyFilters();
+})();
+</script>
+{% endblock %}

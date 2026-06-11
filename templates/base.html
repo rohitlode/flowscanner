@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FlowScanner</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; font-size: 13px; }
+
+    /* Nav */
+    .nav { display: flex; align-items: center; gap: 2px; background: #111; border-bottom: 1px solid #222; padding: 0 16px; height: 40px; }
+    .nav a { color: #888; text-decoration: none; padding: 8px 14px; border-radius: 4px; font-size: 12px; font-weight: 500; position: relative; }
+    .nav a:hover { color: #fff; background: #1a1a1a; }
+    .nav a.active { color: #fff; border-bottom: 2px solid #22c55e; }
+    .badge { background: #22c55e; color: #000; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 700; margin-left: 4px; }
+    .badge.orange { background: #f59e0b; }
+
+    /* Toolbar */
+    .toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #111; border-bottom: 1px solid #1a1a1a; }
+    .btn { padding: 6px 16px; border-radius: 20px; border: 1px solid #333; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-primary { background: #fff; color: #000; border-color: #fff; }
+    .btn-secondary { background: transparent; color: #ccc; }
+    .btn-green { background: #22c55e; color: #000; border-color: #22c55e; }
+    select.interval { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 20px; padding: 5px 10px; font-size: 12px; }
+    .status-text { color: #555; font-size: 11px; margin-left: auto; }
+    .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #333; border-top-color: #22c55e; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 4px; }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { color: #555; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 10px 16px; text-align: left; border-bottom: 1px solid #1a1a1a; }
+    td { padding: 14px 16px; border-bottom: 1px solid #161616; vertical-align: top; }
+    tr:hover td { background: #131313; }
+
+    /* Badges */
+    .tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+    .tag-call { background: #052e16; color: #22c55e; border: 1px solid #166534; }
+    .tag-put  { background: #1c1917; color: #f59e0b; border: 1px solid #78350f; }
+    .tag-validated { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+    .tag-watch { background: #1c1917; color: #fbbf24; border: 1px solid #92400e; }
+    .tag-unvalidated { background: #1a1a1a; color: #666; border: 1px solid #333; }
+
+    /* Symbol */
+    .symbol { font-size: 18px; font-weight: 700; color: #fff; }
+    .contract { color: #22c55e; font-size: 12px; margin-top: 2px; }
+    .premium { font-size: 11px; color: #888; margin-top: 3px; }
+    .premium span { color: #e0e0e0; }
+
+    /* Contract bucket */
+    .bucket { font-size: 11px; color: #aaa; line-height: 1.6; }
+    .bucket b { color: #22c55e; }
+    .oi-up { color: #22c55e; }
+    .oi-down { color: #ef4444; }
+    .oi-hold { color: #888; }
+
+    /* Timestamp */
+    .ts { font-size: 11px; color: #555; }
+
+    /* Direction dot */
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+    .dot-call { background: #22c55e; }
+    .dot-put  { background: #f59e0b; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 60px; color: #444; }
+    .empty h3 { font-size: 16px; margin-bottom: 8px; }
+    .empty p { font-size: 12px; }
+
+    /* Scan runs */
+    .run-item { padding: 6px 0; border-bottom: 1px solid #1a1a1a; font-size: 11px; color: #666; }
+    .run-item b { color: #aaa; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/scanner" class="{% if active_tab=='scanner' %}active{% endif %}">Scanner</a>
+    <a href="/open-trades" class="{% if active_tab=='open_trades' %}active{% endif %}">Open Trades</a>
+    <a href="/flow-trades" class="{% if active_tab=='flow_trades' %}active{% endif %}">
+      Flow Trades
+      {% if active_tab=='flow_trades' %}<span class="badge">{{ signals|length }}</span>{% endif %}
+    </a>
+    <a href="/analytics" class="{% if active_tab=='analytics' %}active{% endif %}">
+      Analytics <span class="badge orange">BT</span>
+    </a>
+    <a href="/report" class="{% if active_tab=='report' %}active{% endif %}">Report</a>
+    <a href="/pipeline" class="{% if active_tab=='pipeline' %}active{% endif %}">Pipeline</a>
+  </nav>
+  {% block content %}{% endblock %}
+</body>
+</html>

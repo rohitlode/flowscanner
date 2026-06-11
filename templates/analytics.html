@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  /* ── Filter bar ── */
+  .bt-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 10px 16px; background: #111; border-bottom: 1px solid #1a1a1a;
+  }
+  .pill-group { display: flex; gap: 4px; }
+  .pill {
+    padding: 4px 12px; border-radius: 20px; border: 1px solid #333;
+    background: transparent; color: #666; font-size: 11px; font-weight: 600;
+    cursor: pointer; letter-spacing: .03em; transition: border-color .15s, color .15s;
+  }
+  .pill:hover { color: #ccc; border-color: #555; }
+  .pill.active { border-color: #22c55e; color: #fff; background: rgba(34,197,94,.08); }
+  .bt-search {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 6px;
+    color: #ccc; font-size: 12px; padding: 5px 10px; width: 140px; outline: none;
+  }
+  .bt-search:focus { border-color: #444; }
+  .bt-select {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 6px;
+    color: #ccc; font-size: 12px; padding: 5px 10px; outline: none; cursor: pointer;
+  }
+  .bt-select:focus { border-color: #444; }
+  .filter-label { font-size: 11px; color: #444; white-space: nowrap; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex; gap: 16px; align-items: center;
+    padding: 8px 16px; background: #0d0d0d; border-bottom: 1px solid #1a1a1a;
+    font-size: 11px; color: #555; flex-wrap: wrap;
+  }
+  .stats-bar .s-val { color: #aaa; font-weight: 700; margin-right: 2px; }
+  .stats-sep { color: #2a2a2a; }
+
+  /* ── Table ── */
+  .bt-table-wrap { overflow-x: auto; }
+  .bt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .bt-table th {
+    color: #444; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; padding: 9px 12px; text-align: left;
+    border-bottom: 1px solid #1a1a1a; white-space: nowrap; user-select: none;
+    cursor: pointer;
+  }
+  .bt-table th:hover { color: #888; }
+  .bt-table th.sort-active { color: #22c55e; }
+  .bt-table td {
+    padding: 10px 12px; border-bottom: 1px solid #161616;
+    color: #aaa; vertical-align: middle; white-space: nowrap;
+  }
+  .bt-table tr:hover td { background: #131313; }
+
+  /* ── Cell styles ── */
+  .ticker-cell { font-size: 14px; font-weight: 700; color: #fff; }
+  .pos { color: #22c55e; }
+  .neg { color: #ef4444; }
+  .neu { color: #f59e0b; }
+  .dim { color: #555; }
+  .best-strat { font-size: 11px; font-weight: 700; color: #e0e0e0; }
+  .strat-col { font-size: 11px; color: #666; }
+  .strat-col.is-best { color: #e0e0e0; background: #151515; border-radius: 4px; padding: 2px 6px; }
+  .ts-cell { font-size: 10px; color: #3a3a3a; }
+
+  /* ── Empty state ── */
+  .bt-empty {
+    display: none; text-align: center; padding: 60px 16px; color: #333;
+  }
+  .bt-empty h3 { font-size: 16px; margin-bottom: 8px; color: #444; }
+  .bt-empty p { font-size: 12px; line-height: 1.8; }
+  .bt-empty.visible { display: block; }
+
+  /* ── Toolbar note ── */
+  .toolbar-note {
+    padding: 9px 16px; font-size: 11px; color: #444;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .toolbar-note b { color: #666; }
+</style>
+
+<div class="toolbar-note">
+  Backtest runs automatically after each scan (MACD · RSI · Volume Breakout strategies, 1y daily).
+  <b>test_bucket</b> is set from real win rate: VALIDATED_TEST ≥ 55% win rate + &gt;0% total return + ≥8 trades.
+</div>
+
+{% if results %}
+{# ── Pre-compute summary stats in Jinja ── #}
+{% set ns = namespace(validated=0, watch=0, unvalidated=0, wr_sum=0) %}
+{% for r in results %}
+  {% if r.test_bucket == 'VALIDATED_TEST' %}{% set ns.validated = ns.validated + 1 %}{% endif %}
+  {% if r.test_bucket == 'WATCH' %}{% set ns.watch = ns.watch + 1 %}{% endif %}
+  {% if r.test_bucket == 'UNVALIDATED' %}{% set ns.unvalidated = ns.unvalidated + 1 %}{% endif %}
+  {% set ns.wr_sum = ns.wr_sum + r.win_rate %}
+{% endfor %}
+{% set avg_wr = (ns.wr_sum / results|length * 100)|round(1) %}
+
+<!-- Stats bar -->
+<div class="stats-bar" id="statsBar">
+  <span><span class="s-val" style="color:#4ade80">{{ ns.validated }}</span> VALIDATED</span>
+  <span class="stats-sep">·</span>
+  <span><span class="s-val" style="color:#fbbf24">{{ ns.watch }}</span> WATCH</span>
+  <span class="stats-sep">·</span>
+  <span><span class="s-val">{{ ns.unvalidated }}</span> UNVALIDATED</span>
+  <span class="stats-sep">·</span>
+  <span>Avg win rate: <span class="s-val" id="avgWrStat">{{ avg_wr }}%</span></span>
+  <span class="stats-sep">·</span>
+  <span id="visibleCount"><span class="s-val" id="visibleNum">{{ results|length }}</span> shown</span>
+</div>
+
+<!-- Filter toolbar -->
+<div class="bt-toolbar">
+  <div class="pill-group" id="bucketPills">
+    <button class="pill active" data-bucket="all" onclick="setBucket(this)">All</button>
+    <button class="pill" data-bucket="VALIDATED_TEST" onclick="setBucket(this)">VALIDATED_TEST</button>
+    <button class="pill" data-bucket="WATCH" onclick="setBucket(this)">WATCH</button>
+    <button class="pill" data-bucket="UNVALIDATED" onclick="setBucket(this)">UNVALIDATED</button>
+  </div>
+  <span class="filter-label">Strategy:</span>
+  <div class="pill-group" id="stratPills">
+    <button class="pill active" data-strat="all" onclick="setStrat(this)">All</button>
+    <button class="pill" data-strat="macd" onclick="setStrat(this)">MACD</button>
+    <button class="pill" data-strat="rsi" onclick="setStrat(this)">RSI</button>
+    <button class="pill" data-strat="vol_breakout" onclick="setStrat(this)">Vol Breakout</button>
+  </div>
+  <span class="filter-label">Sort:</span>
+  <select class="bt-select" id="sortSelect" onchange="applyFilters()">
+    <option value="wr-desc">Win Rate ↓</option>
+    <option value="total-desc">Total Return ↓</option>
+    <option value="trades-desc">Trades ↓</option>
+    <option value="avg-desc">Avg/Trade ↓</option>
+    <option value="ticker-asc">Ticker A-Z</option>
+  </select>
+  <input class="bt-search" id="tickerSearch" type="text" placeholder="Search ticker…" oninput="applyFilters()">
+</div>
+
+<!-- Table -->
+<div class="bt-table-wrap">
+  <table class="bt-table" id="btTable">
+    <thead>
+      <tr>
+        <th>Ticker</th>
+        <th>Bucket</th>
+        <th>Best Strategy</th>
+        <th class="sort-active" id="th-wr">Win Rate</th>
+        <th id="th-trades">Trades</th>
+        <th id="th-avg">Avg/Trade</th>
+        <th id="th-total">Total Return</th>
+        <th>MACD</th>
+        <th>RSI</th>
+        <th>Vol BT</th>
+        <th>Last Run</th>
+      </tr>
+    </thead>
+    <tbody id="btBody">
+      {% for r in results %}
+      <tr
+        data-bucket="{{ r.test_bucket }}"
+        data-strategy="{{ r.best_strategy }}"
+        data-ticker="{{ r.ticker }}"
+        data-wr="{{ r.win_rate }}"
+        data-total="{{ r.total_return_pct }}"
+        data-trades="{{ r.n_trades }}"
+        data-avg="{{ r.avg_return_pct }}"
+        data-runat="{{ r.run_at }}"
+      >
+        <td class="ticker-cell">{{ r.ticker }}</td>
+        <td>
+          {% if r.test_bucket == 'VALIDATED_TEST' %}
+            <span class="tag tag-validated">VALIDATED</span>
+          {% elif r.test_bucket == 'WATCH' %}
+            <span class="tag tag-watch">WATCH</span>
+          {% else %}
+            <span class="tag tag-unvalidated">UNVALIDATED</span>
+          {% endif %}
+        </td>
+        <td class="best-strat">{{ r.best_strategy | upper }}</td>
+        <td class="{% if r.win_rate >= 0.55 %}pos{% elif r.win_rate >= 0.45 %}neu{% else %}neg{% endif %}">
+          {{ "%.0f"|format(r.win_rate * 100) }}%
+        </td>
+        <td>{{ r.n_trades }}</td>
+        <td class="{% if r.avg_return_pct > 0 %}pos{% else %}neg{% endif %}">
+          {% if r.avg_return_pct > 0 %}+{% endif %}{{ "%.1f"|format(r.avg_return_pct) }}%
+        </td>
+        <td class="{% if r.total_return_pct > 0 %}pos{% else %}neg{% endif %}">
+          {% if r.total_return_pct > 0 %}+{% endif %}{{ "%.1f"|format(r.total_return_pct) }}%
+        </td>
+        <td>
+          <span class="strat-col {% if r.best_strategy == 'macd' %}is-best{% endif %}">
+            {{ "%.0f"|format(r.macd_win_rate * 100) }}% / {{ r.macd_n_trades }}
+          </span>
+        </td>
+        <td>
+          <span class="strat-col {% if r.best_strategy == 'rsi' %}is-best{% endif %}">
+            {{ "%.0f"|format(r.rsi_win_rate * 100) }}% / {{ r.rsi_n_trades }}
+          </span>
+        </td>
+        <td>
+          <span class="strat-col {% if r.best_strategy == 'vol_breakout' %}is-best{% endif %}">
+            {{ "%.0f"|format(r.vb_win_rate * 100) }}% / {{ r.vb_n_trades }}
+          </span>
+        </td>
+        <td class="ts-cell" data-iso="{{ r.run_at }}">{{ r.run_at[:16] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Per-bucket empty state (shown by JS) -->
+<div class="bt-empty" id="btEmpty">
+  <h3 id="btEmptyTitle">No results</h3>
+  <p id="btEmptyMsg">Try a different filter.</p>
+</div>
+
+{% else %}
+<div class="empty">
+  <h3>No backtest data yet</h3>
+  <p>Click <b>Scan Now</b> on the Flow Trades tab.<br>
+  Backtests run automatically after each scan.<br>
+  Results appear here per ticker with real win rates.</p>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  'use strict';
+
+  let activeBucket = 'all';
+  let activeStrat  = 'all';
+
+  /* ── Relative-time helper ── */
+  function relTime(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr.replace(' ', 'T') + (isoStr.includes('Z') ? '' : 'Z'));
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (isNaN(diff) || diff < 0) return isoStr.slice(0, 16);
+    if (diff < 60)   return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  /* ── Hydrate relative times on load ── */
+  document.querySelectorAll('td[data-iso]').forEach(td => {
+    td.textContent = relTime(td.dataset.iso);
+  });
+
+  /* ── Pill setters ── */
+  window.setBucket = function (el) {
+    document.querySelectorAll('#bucketPills .pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    activeBucket = el.dataset.bucket;
+    applyFilters();
+  };
+
+  window.setStrat = function (el) {
+    document.querySelectorAll('#stratPills .pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    activeStrat = el.dataset.strat;
+    applyFilters();
+  };
+
+  /* ── Main filter + sort ── */
+  window.applyFilters = function () {
+    const query  = document.getElementById('tickerSearch').value.trim().toUpperCase();
+    const sort   = document.getElementById('sortSelect').value;
+    const tbody  = document.getElementById('btBody');
+    const rows   = Array.from(tbody.querySelectorAll('tr'));
+
+    /* Filter */
+    let visible = rows.filter(row => {
+      const bucket  = row.dataset.bucket;
+      const strat   = row.dataset.strategy;
+      const ticker  = row.dataset.ticker.toUpperCase();
+      if (activeBucket !== 'all' && bucket !== activeBucket) return false;
+      if (activeStrat  !== 'all' && strat  !== activeStrat)  return false;
+      if (query && !ticker.startsWith(query)) return false;
+      return true;
+    });
+
+    /* Sort */
+    visible.sort((a, b) => {
+      switch (sort) {
+        case 'wr-desc':     return parseFloat(b.dataset.wr)     - parseFloat(a.dataset.wr);
+        case 'total-desc':  return parseFloat(b.dataset.total)  - parseFloat(a.dataset.total);
+        case 'trades-desc': return parseFloat(b.dataset.trades) - parseFloat(a.dataset.trades);
+        case 'avg-desc':    return parseFloat(b.dataset.avg)    - parseFloat(a.dataset.avg);
+        case 'ticker-asc':  return a.dataset.ticker.localeCompare(b.dataset.ticker);
+        default: return 0;
+      }
+    });
+
+    /* Hide all, re-append visible in sorted order */
+    rows.forEach(r => r.style.display = 'none');
+    visible.forEach(r => {
+      r.style.display = '';
+      tbody.appendChild(r);
+    });
+
+    /* Visible count stat */
+    document.getElementById('visibleNum').textContent = visible.length;
+
+    /* Avg win rate of visible */
+    if (visible.length > 0) {
+      const avgWr = visible.reduce((s, r) => s + parseFloat(r.dataset.wr), 0) / visible.length * 100;
+      document.getElementById('avgWrStat').textContent = avgWr.toFixed(1) + '%';
+    } else {
+      document.getElementById('avgWrStat').textContent = '—';
+    }
+
+    /* Empty state */
+    const emptyEl   = document.getElementById('btEmpty');
+    const tableWrap = document.querySelector('.bt-table-wrap');
+    if (visible.length === 0) {
+      emptyEl.classList.add('visible');
+      tableWrap.style.display = 'none';
+      const title = document.getElementById('btEmptyTitle');
+      const msg   = document.getElementById('btEmptyMsg');
+      if (activeBucket === 'VALIDATED_TEST') {
+        title.textContent = 'No validated strategies yet';
+        msg.textContent   = 'Run more scans to accumulate backtest data.';
+      } else if (activeBucket === 'WATCH') {
+        title.textContent = 'No WATCH tickers match';
+        msg.textContent   = 'Try a different filter or search.';
+      } else {
+        title.textContent = 'No results';
+        msg.textContent   = 'Try a different filter or search.';
+      }
+    } else {
+      emptyEl.classList.remove('visible');
+      tableWrap.style.display = '';
+    }
+  };
+
+  /* ── Init ── */
+  applyFilters();
+}());
+</script>
+{% endblock %}

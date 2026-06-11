@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="toolbar">
+  <span style="color:#888; font-size:12px;">Recent scan runs</span>
+</div>
+<div style="padding: 16px;">
+  {% if scan_runs %}
+    {% for r in scan_runs %}
+    <div class="run-item">
+      <b>{{ r.started_at[:16] }}</b> · {{ r.exchange }} · {{ r.candidates }} candidates → <b>{{ r.signals_found }}</b> signals · {{ r.status }}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty"><h3>No scans yet</h3><p>Ask Claude to run a scan</p></div>
+  {% endif %}
+</div>
+
+<!-- Live log tail -->
+<div style="padding: 0 16px 16px;">
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+    <span style="color:#888; font-size:12px;">Live Log</span>
+    <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:pulse 1.5s infinite;"></span>
+    <span style="color:#555; font-size:11px;">auto-refreshing every 3s</span>
+  </div>
+  <div id="log-tail"
+       hx-get="/logs/tail"
+       hx-trigger="every 3s"
+       hx-swap="innerHTML"
+       style="background:#0d1117; border:1px solid #222; border-radius:6px; padding:10px 12px;
+              font-family:monospace; font-size:11px; color:#ccc; height:220px;
+              overflow-y:auto; white-space:pre-wrap; word-break:break-all;">
+    Loading…
+  </div>
+</div>
+<style>
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+</style>
+{% endblock %}

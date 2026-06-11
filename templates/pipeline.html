@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .page-body { padding: 16px; }
+  .section-title { font-size: 11px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; margin-top: 20px; }
+  .section-title:first-child { margin-top: 0; }
+
+  /* Summary cards */
+  .stat-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+  .stat-card { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1; }
+  .stat-card:hover { border-color: #2a2a2a; }
+  .stat-val { font-size: 26px; font-weight: 700; color: #fff; }
+  .stat-lbl { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+
+  /* Funnel */
+  .funnel-wrap { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+  .funnel-stage { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .funnel-label { width: 130px; font-size: 11px; color: #888; text-align: right; flex-shrink: 0; }
+  .funnel-bar-wrap { flex: 1; background: #1a1a1a; border-radius: 4px; height: 26px; overflow: hidden; }
+  .funnel-bar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 10px; font-size: 11px; font-weight: 700; color: #000; transition: width .4s ease; }
+  .funnel-bar.candidates { background: #22c55e; }
+  .funnel-bar.signals { background: #f59e0b; }
+  .funnel-pct { width: 48px; font-size: 11px; color: #555; text-align: right; flex-shrink: 0; }
+
+  /* Runs table */
+  .runs-wrap { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; overflow: hidden; }
+  .runs-wrap table { margin: 0; }
+  .status-done { color: #22c55e; }
+  .status-error { color: #ef4444; }
+  .status-running { color: #f59e0b; }
+</style>
+
+<div class="page-body">
+
+  <!-- Summary stats -->
+  <div class="section-title">Aggregate Stats</div>
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-val">{{ stats.total_runs or 0 }}</div>
+      <div class="stat-lbl">Total Runs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ stats.total_candidates | int if stats.total_candidates else 0 }}</div>
+      <div class="stat-lbl">Total Candidates</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:#22c55e">{{ stats.total_signals | int if stats.total_signals else 0 }}</div>
+      <div class="stat-lbl">Total Signals</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ "%.1f"|format(stats.avg_candidates) if stats.avg_candidates else "0.0" }}</div>
+      <div class="stat-lbl">Avg Candidates / Run</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:#f59e0b">{{ "%.1f"|format(stats.avg_signals) if stats.avg_signals else "0.0" }}</div>
+      <div class="stat-lbl">Avg Signals / Run</div>
+    </div>
+    {% if stats.total_candidates and stats.total_candidates > 0 %}
+    <div class="stat-card">
+      <div class="stat-val" style="color:#a78bfa">
+        {{ "%.1f"|format(stats.total_signals / stats.total_candidates * 100) }}%
+      </div>
+      <div class="stat-lbl">Signal Rate</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Funnel visualization -->
+  {% if stats.total_candidates and stats.total_candidates > 0 %}
+  <div class="section-title">Scan Funnel</div>
+  <div class="funnel-wrap">
+    {% set cand_pct = 100 %}
+    {% set sig_pct = (stats.total_signals / stats.total_candidates * 100) | round(1) if stats.total_candidates else 0 %}
+    <div class="funnel-stage">
+      <div class="funnel-label">Candidates</div>
+      <div class="funnel-bar-wrap">
+        <div class="funnel-bar candidates" style="width:100%">{{ stats.total_candidates | int }}</div>
+      </div>
+      <div class="funnel-pct">100%</div>
+    </div>
+    <div class="funnel-stage">
+      <div class="funnel-label">Signals Found</div>
+      <div class="funnel-bar-wrap">
+        <div class="funnel-bar signals" style="width:{{ sig_pct }}%">{{ stats.total_signals | int }}</div>
+      </div>
+      <div class="funnel-pct">{{ sig_pct }}%</div>
+    </div>
+    <div class="funnel-stage">
+      <div class="funnel-label">Dropped Off</div>
+      <div class="funnel-bar-wrap">
+        <div class="funnel-bar" style="width:{{ (100 - sig_pct) | round(1) }}%; background:#ef4444;">
+          {{ (stats.total_candidates - stats.total_signals) | int }}
+        </div>
+      </div>
+      <div class="funnel-pct">{{ (100 - sig_pct) | round(1) }}%</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent scan runs -->
+  <div class="section-title">Recent Scan Runs</div>
+  {% if runs %}
+  <div class="runs-wrap">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Started At</th>
+            <th>Exchange</th>
+            <th>Candidates</th>
+            <th>Signals Found</th>
+            <th>Signal Rate</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in runs %}
+          <tr>
+            <td class="ts">{{ r.started_at[:16] if r.started_at else '—' }} UTC</td>
+            <td>{{ r.exchange or '—' }}</td>
+            <td>{{ r.candidates or 0 }}</td>
+            <td style="color:#22c55e;font-weight:700">{{ r.signals_found or 0 }}</td>
+            <td>
+              {% if r.candidates and r.candidates > 0 %}
+                {{ "%.1f"|format(r.signals_found / r.candidates * 100) }}%
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              <span class="status-{{ r.status or 'done' }}">{{ r.status or 'done' }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">
+    <h3>No scan runs yet</h3>
+    <p>Run a scan from the Flow Trades tab to populate pipeline data.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% if signals %}
+  {% for s in signals %}
+  <tr>
+    <td>
+      <div class="symbol">{{ s.ticker }}</div>
+      {% if s.contract_symbol %}
+      <div class="contract">{{ s.contract_symbol }}</div>
+      {% endif %}
+      <div class="premium">
+        {% if s.now_price %}now <span>${{ "%.2f"|format(s.now_price) }}</span>{% endif %}
+        {% if s.entry_price %} entry <span>${{ "%.2f"|format(s.entry_price) }}</span>{% endif %}
+      </div>
+    </td>
+    <td>
+      {% if s.flow_strategy %}
+        {% if 'PUT' in s.flow_strategy %}
+          <span class="tag tag-put"><span class="dot dot-put"></span>{{ s.flow_strategy }}</span>
+        {% else %}
+          <span class="tag tag-call"><span class="dot dot-call"></span>{{ s.flow_strategy }}</span>
+        {% endif %}
+      {% else %}
+        <span class="tag tag-unvalidated">PENDING</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if s.test_bucket == 'VALIDATED_TEST' %}
+        <span class="tag tag-validated">VALIDATED_TEST</span>
+      {% elif s.test_bucket == 'WATCH' %}
+        <span class="tag tag-watch">WATCH</span>
+      {% else %}
+        <span class="tag tag-unvalidated">{{ s.test_bucket or 'UNVALIDATED' }}</span>
+      {% endif %}
+    </td>
+    <td>
+      <div class="bucket">
+        {% if s.dte_bucket %}<b>{{ s.dte_bucket }}</b> DTE | {% endif %}
+        {% if s.otm_pct_range %}{{ s.otm_pct_range }} OTM | {% endif %}
+        {% if s.contract_quality %}{{ s.contract_quality }}{% endif %}
+        {% if s.oi_behavior %}
+          <br>OI
+          {% if s.oi_behavior == 'STUCK_UP' %}<span class="oi-up">STUCK UP</span>
+          {% elif s.oi_behavior == 'FADING' %}<span class="oi-down">FADING</span>
+          {% else %}<span class="oi-hold">HOLDING</span>{% endif %}
+          {% if s.oi_prev and s.oi_curr %}
+            {{ "{:,}".format(s.oi_prev) }}→{{ "{:,}".format(s.oi_curr) }}
+            ({% if s.oi_delta > 0 %}+{% endif %}{{ "{:,}".format(s.oi_delta) }})
+          {% endif %}
+        {% endif %}
+        {% if s.volume_ratio %}
+          <br>Vol: <b>{{ "%.1f"|format(s.volume_ratio) }}x</b> avg
+        {% endif %}
+        {% if s.change_pct %}
+          | Chg: <b>{% if s.change_pct > 0 %}<span class="oi-up">+{% else %}<span class="oi-down">{% endif %}{{ "%.1f"|format(s.change_pct) }}%</span></b>
+        {% endif %}
+        {% if s.analysis_summary %}
+          <br><span style="color:#666;font-size:0.75em;display:block;margin-top:4px;white-space:pre-line">{{ s.analysis_summary }}</span>
+        {% endif %}
+      </div>
+    </td>
+    <td>
+      {% if s.conviction_tier %}
+        {% if s.conviction_tier == 'HIGH' %}
+          <span style="font-size:12px;font-weight:700;color:#22c55e;">🔥 HIGH</span>
+        {% elif s.conviction_tier == 'MODERATE' %}
+          <span style="font-size:12px;font-weight:700;color:#f59e0b;">⚡ MODERATE</span>
+        {% elif s.conviction_tier == 'SKIP' %}
+          <span style="font-size:12px;font-weight:700;color:#ef4444;">⚠ AH FADE</span>
+        {% else %}
+          <span style="font-size:12px;font-weight:700;color:#555;">📊 NO FLOW</span>
+        {% endif %}
+        {% if s.sizing %}
+          <br><span style="font-size:10px;color:#555;">{{ s.sizing }}</span>
+        {% endif %}
+      {% endif %}
+    </td>
+    <td class="ts">
+      {{ s.created_at[:10] }}<br>{{ s.created_at[11:16] }} UTC
+      {% if s.confidence %}<br><span style="color:#555">conf: {{ s.confidence }}/100</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+{% else %}
+  <tr><td colspan="5">
+    <div class="empty">
+      <h3>No signals yet</h3>
+      <p>Run a scan from Claude Code using the scan skill</p>
+    </div>
+  </td></tr>
+{% endif %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="toolbar">
+  <span style="color:#888; font-size:12px;">Positions with acked entry price</span>
+</div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>SYMBOL</th>
+        <th>FLOW STRATEGY</th>
+        <th>TEST BUCKET</th>
+        <th>CONTRACT BUCKET</th>
+        <th>DATE/TIME</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% include "partials/signal_rows.html" %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
