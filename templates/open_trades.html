@@ -1,22 +1,93 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="toolbar">
-  <span style="color:#888; font-size:12px;">Positions with acked entry price</span>
+  <span style="color:#888; font-size:12px;">Open positions — ACK'd from Flow Trades</span>
+  <span style="color:#555; font-size:11px; margin-left:8px;">Prices refresh on page load</span>
 </div>
+
+{% if signals %}
 <div class="table-wrap">
   <table>
     <thead>
       <tr>
         <th>SYMBOL</th>
-        <th>FLOW STRATEGY</th>
-        <th>TEST BUCKET</th>
-        <th>CONTRACT BUCKET</th>
-        <th>DATE/TIME</th>
+        <th>STRATEGY</th>
+        <th>CONVICTION</th>
+        <th>ENTRY</th>
+        <th>NOW</th>
+        <th>P&amp;L</th>
+        <th>ACTION</th>
       </tr>
     </thead>
     <tbody>
-      {% include "partials/signal_rows.html" %}
+      {% for s in signals %}
+      {% set entry = s.entry_price | float %}
+      {% set now   = s.now_price | float if s.now_price else entry %}
+      {% set pnl   = ((now - entry) / entry * 100) if entry > 0 else 0 %}
+      {% if s.direction == 'short' %}{% set pnl = pnl * -1 %}{% endif %}
+      <tr>
+        <td>
+          <div class="symbol">{{ s.ticker }}</div>
+          <div style="font-size:10px;color:#555;">{{ s.exchange }}</div>
+          {% if s.test_bucket == 'VALIDATED_TEST' %}
+            <span class="tag tag-validated" style="font-size:9px;">VALIDATED</span>
+          {% elif s.test_bucket == 'WATCH' %}
+            <span class="tag tag-watch" style="font-size:9px;">WATCH</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if s.flow_strategy %}
+            {% if 'PUT' in s.flow_strategy %}
+              <span class="tag tag-put"><span class="dot dot-put"></span>PUT</span>
+            {% else %}
+              <span class="tag tag-call"><span class="dot dot-call"></span>CALL</span>
+            {% endif %}
+          {% endif %}
+          <div style="font-size:10px;color:#555;margin-top:3px;">{{ s.direction or 'long' }}</div>
+        </td>
+        <td>
+          {% if s.conviction_tier == 'HIGH' %}
+            <span style="color:#22c55e;font-weight:700;">🔥 HIGH</span>
+          {% elif s.conviction_tier == 'MODERATE' %}
+            <span style="color:#f59e0b;font-weight:700;">⚡ MOD</span>
+          {% elif s.conviction_tier == 'SKIP' %}
+            <span style="color:#ef4444;font-weight:700;">⚠ FADE</span>
+          {% else %}
+            <span style="color:#555;">📊 LOW</span>
+          {% endif %}
+          {% if s.sizing %}
+            <div style="font-size:10px;color:#444;">{{ s.sizing }}</div>
+          {% endif %}
+        </td>
+        <td style="font-weight:700;color:#fff;">${{ "%.2f"|format(entry) }}</td>
+        <td style="color:#aaa;">${{ "%.2f"|format(now) }}</td>
+        <td>
+          {% if pnl > 0 %}
+            <span style="color:#22c55e;font-weight:700;font-size:14px;">+{{ "%.2f"|format(pnl) }}%</span>
+          {% elif pnl < 0 %}
+            <span style="color:#ef4444;font-weight:700;font-size:14px;">{{ "%.2f"|format(pnl) }}%</span>
+          {% else %}
+            <span style="color:#555;">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <form hx-post="/close-trade/{{ s.id }}" hx-swap="outerHTML" hx-target="closest tr">
+            <button type="submit"
+                    style="background:#1a1a1a;border:1px solid #333;color:#888;border-radius:6px;
+                           font-size:11px;padding:4px 10px;cursor:pointer;">
+              ✕ Close
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
     </tbody>
   </table>
 </div>
+{% else %}
+<div class="empty">
+  <h3>No open trades</h3>
+  <p>ACK a signal from Flow Trades to open a position here.</p>
+</div>
+{% endif %}
 {% endblock %}

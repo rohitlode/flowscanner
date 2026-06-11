@@ -76,6 +76,29 @@
     <td class="ts">
       {{ s.created_at[:10] }}<br>{{ s.created_at[11:16] }} UTC
       {% if s.confidence %}<br><span style="color:#555">conf: {{ s.confidence }}/100</span>{% endif %}
+      <br>
+      {% if s.entry_price %}
+        <span style="color:#22c55e;font-size:10px;">✓ Open @ ${{ "%.2f"|format(s.entry_price) }}</span>
+        <form style="display:inline;margin-left:4px;"
+              hx-post="/close-trade/{{ s.id }}"
+              hx-swap="outerHTML">
+          <button type="submit"
+                  style="background:none;border:1px solid #333;color:#888;border-radius:4px;
+                         font-size:9px;padding:1px 5px;cursor:pointer;">✕ Close</button>
+        </form>
+      {% else %}
+        <form style="display:flex;gap:3px;margin-top:4px;align-items:center;"
+              hx-post="/ack/{{ s.id }}"
+              hx-swap="outerHTML"
+              hx-target="closest form">
+          <input name="entry_price" type="number" step="0.01" placeholder="${{ "%.2f"|format(s.price) if s.price else '0' }}"
+                 style="width:65px;background:#111;border:1px solid #333;color:#ccc;border-radius:4px;
+                        font-size:10px;padding:2px 5px;outline:none;">
+          <button type="submit"
+                  style="background:#6366f1;border:none;color:#fff;border-radius:4px;
+                         font-size:10px;padding:2px 7px;cursor:pointer;">ACK</button>
+        </form>
+      {% endif %}
     </td>
   </tr>
   {% endfor %}

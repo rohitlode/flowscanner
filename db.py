@@ -185,6 +185,49 @@ def upsert_backtest(r: dict):
         ))
 
 
+def ack_signal(signal_id: str, entry_price: float):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE signals SET entry_price=?, now_price=? WHERE id=?",
+            (entry_price, entry_price, signal_id)
+        )
+
+
+def close_signal(signal_id: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE signals SET status='closed' WHERE id=?",
+            (signal_id,)
+        )
+
+
+def refresh_now_prices():
+    """Update now_price for all open trades using yfinance."""
+    import yfinance as yf
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, ticker FROM signals WHERE status='active' AND entry_price IS NOT NULL"
+        ).fetchall()
+    for row in rows:
+        try:
+            price = yf.Ticker(row["ticker"]).fast_info["last_price"]
+            if price:
+                with get_conn() as conn:
+                    conn.execute("UPDATE signals SET now_price=? WHERE id=?", (price, row["id"]))
+        except Exception:
+            pass
+
+
+def get_open_trades():
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT * FROM signals
+            WHERE status='active' AND entry_price IS NOT NULL
+            ORDER BY created_at DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
 def update_signal_test_bucket(ticker: str, test_bucket: str):
     with get_conn() as conn:
         conn.execute(

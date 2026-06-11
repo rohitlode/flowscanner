@@ -160,8 +160,9 @@
             </td>
             <td>
               {% if r.confidence %}
-                <span class="{% if r.confidence >= 70 %}conf-high{% elif r.confidence >= 50 %}conf-mid{% else %}conf-low{% endif %}">
-                  {{ r.confidence }}
+                {% set conf = r.confidence | int %}
+                <span class="{% if conf >= 70 %}conf-high{% elif conf >= 50 %}conf-mid{% else %}conf-low{% endif %}">
+                  {{ conf }}
                 </span>
               {% else %}—{% endif %}
             </td>

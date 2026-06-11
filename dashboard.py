@@ -80,12 +80,33 @@ def scanner(request: Request):
 
 @app.get("/open-trades", response_class=HTMLResponse)
 def open_trades(request: Request):
-    signals = [s for s in db.get_signals() if s.get("entry_price")]
+    import threading
+    threading.Thread(target=db.refresh_now_prices, daemon=True).start()
+    signals = db.get_open_trades()
     return templates.TemplateResponse("open_trades.html", {
         "request": request,
         "signals": signals,
         "active_tab": "open_trades",
     })
+
+
+@app.post("/ack/{signal_id}", response_class=HTMLResponse)
+async def ack_trade(signal_id: str, request: Request):
+    form = await request.form()
+    try:
+        price = float(form.get("entry_price", 0))
+    except ValueError:
+        return HTMLResponse("<span style='color:#ef4444;font-size:10px;'>Bad price</span>")
+    if price <= 0:
+        return HTMLResponse("<span style='color:#ef4444;font-size:10px;'>Enter price</span>")
+    db.ack_signal(signal_id, price)
+    return HTMLResponse("<span style='color:#22c55e;font-size:10px;'>✓ Opened</span>")
+
+
+@app.post("/close-trade/{signal_id}", response_class=HTMLResponse)
+def close_trade(signal_id: str):
+    db.close_signal(signal_id)
+    return HTMLResponse("<span style='color:#888;font-size:10px;'>Closed</span>")
 
 
 @app.post("/scan", response_class=HTMLResponse)
