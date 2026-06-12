@@ -41,16 +41,16 @@ def _classify(row: dict) -> dict:
     bullish  = chg > 0 and rsi > 50 and macd > macd_sig
     bearish  = chg < 0 and macd < macd_sig
 
-    if bearish and ticker in PUT_RISK_OFF_TICKERS:
-        flow_strategy = "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
-    elif bearish:
-        flow_strategy = "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
+    # Honest classification — technical signal only, no options data yet.
+    # Upgraded to CALL_SWEEP / PUT_RISK_OFF by ingest_ibkr.py when IBKR confirms real flow.
+    if bearish:
+        flow_strategy = "BEARISH_TECHNICAL"
     else:
-        flow_strategy = "FLOW_REPEAT_SWEEP_CALL_CHART"
+        flow_strategy = "BULLISH_TECHNICAL"
 
     # net score proxy
     score = 0
-    if bullish or (bearish and flow_strategy == "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"):
+    if bullish or bearish:
         score += 1
     if vol_r >= 3:
         score += 1
@@ -74,7 +74,7 @@ def _classify(row: dict) -> dict:
         "test_bucket": test_bucket,
         "oi_behavior": oi_behavior,
         "confidence": confidence,
-        "direction": "long" if flow_strategy == "FLOW_REPEAT_SWEEP_CALL_CHART" else "short",
+        "direction": "long" if flow_strategy == "BULLISH_TECHNICAL" else "short",
     }
 
 

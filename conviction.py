@@ -78,6 +78,9 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
     chg_pct    = signal.get("change_pct") or 0
     macd_dir   = signal.get("macd_signal_dir", "bearish")
     flow_strat = signal.get("flow_strategy", "")
+    # normalise — BULLISH_TECHNICAL treated as CALL, BEARISH_TECHNICAL as PUT
+    _is_bullish = "CALL" in flow_strat or flow_strat == "BULLISH_TECHNICAL"
+    _is_bearish = "PUT"  in flow_strat or flow_strat == "BEARISH_TECHNICAL"
 
     # ── AH Fade check ─────────────────────────────────────────────────────
     ah_fade = False
@@ -97,7 +100,7 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
         patterns.append("strike_laddering")   # extreme volume = scaling in
     if abs(chg_pct) > 8 and vol_ratio > 2:
         patterns.append("otm_cluster")        # big move + volume = OTM target
-    if "PUT_RISK_OFF" in flow_strat and vol_ratio > 2:
+    if _is_bearish and vol_ratio > 2:
         patterns.append("protective_puts")
 
     # ── Conviction scoring ─────────────────────────────────────────────────
@@ -124,7 +127,7 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
     if macd_dir == "bullish" and rsi > 50:
         score += 1
         reasons.append("MACD bullish + RSI > 50")
-    elif macd_dir == "bearish" and rsi < 50 and "PUT" in flow_strat:
+    elif macd_dir == "bearish" and rsi < 50 and _is_bearish:
         score += 1
         reasons.append("MACD bearish + RSI < 50 (PUT setup confirmed)")
 

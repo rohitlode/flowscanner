@@ -36,23 +36,45 @@ def enrich_ibkr(items: list[dict]) -> int:
             if not ibkr_result.get("ibkr_available"):
                 continue
 
-            # re-score full conviction with ibkr_data injected
+            # upgrade flow_strategy from technical → confirmed sweep when IBKR backs it
+            flow_dir = ibkr_result.get("flow_direction")  # None | "FLIP" | "SKIP"
+            confirmed = ibkr_result.get("flow_confirmed", False)
+            cp_ratio = ibkr_result.get("call_put_ratio", 1.0)
+
+            direction = sig.get("direction", "long")
+
+            if flow_dir == "FLIP":
+                # IBKR strongly contradicts — flip to the opposite confirmed strategy
+                upgraded_strategy = "FLOW_REPEAT_SWEEP_PUT_RISK_OFF" if direction == "long" else "FLOW_REPEAT_SWEEP_CALL_CHART"
+            elif flow_dir == "SKIP":
+                upgraded_strategy = flow_strategy  # keep as-is, conviction will mark SKIP
+            elif confirmed and cp_ratio >= 1.5 and direction == "long":
+                upgraded_strategy = "FLOW_REPEAT_SWEEP_CALL_CHART"
+            elif confirmed and cp_ratio <= 0.67 and direction == "short":
+                upgraded_strategy = "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
+            else:
+                upgraded_strategy = flow_strategy  # keep honest technical label
+
             sig["ibkr_data"] = ibkr_data
+            sig["flow_strategy"] = upgraded_strategy
             enriched = score_conviction(sig, run_ah_check=False)
 
             conn.execute("""
                 UPDATE signals SET
-                  ibkr_flow=?, conviction_tier=?, conviction_label=?, sizing=?
+                  ibkr_flow=?, flow_strategy=?, direction=?,
+                  conviction_tier=?, conviction_label=?, sizing=?
                 WHERE id=?
             """, (
                 json.dumps(ibkr_result),
+                upgraded_strategy,
+                "long" if "CALL" in upgraded_strategy or upgraded_strategy == "BULLISH_TECHNICAL" else "short",
                 enriched["conviction_tier"],
                 enriched["conviction_label"],
                 enriched["sizing"],
                 sig["id"],
             ))
             updated += 1
-            print(f"  {ticker}: {enriched['conviction_label']} | cp_ratio={ibkr_result.get('call_put_ratio','?'):.2f} | flow_confirmed={ibkr_result.get('flow_confirmed')}")
+            print(f"  {ticker}: {flow_strategy} → {upgraded_strategy} | {enriched['conviction_label']} | cp={cp_ratio:.2f}")
 
     return updated
 

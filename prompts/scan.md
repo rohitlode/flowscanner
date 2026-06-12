@@ -35,7 +35,7 @@ Signal JSON fields (all required):
 - price: number
 - change_pct: number
 - volume_ratio: number (relative volume vs 10d avg)
-- flow_strategy: "FLOW_REPEAT_SWEEP_CALL_CHART" or "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
+- flow_strategy: "BULLISH_TECHNICAL" or "BEARISH_TECHNICAL" — ingest_ibkr.py upgrades to FLOW_REPEAT_SWEEP_CALL_CHART/PUT_RISK_OFF when IBKR confirms real options flow
 - test_bucket: "WATCH" or "UNVALIDATED" only — never emit "VALIDATED_TEST"
 - direction: "long" or "short"
 - confidence: number 40-95

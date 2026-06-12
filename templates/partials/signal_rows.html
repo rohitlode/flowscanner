@@ -15,6 +15,10 @@
       {% if s.flow_strategy %}
         {% if 'PUT' in s.flow_strategy %}
           <span class="tag tag-put"><span class="dot dot-put"></span>{{ s.flow_strategy }}</span>
+        {% elif 'BEARISH' in s.flow_strategy %}
+          <span class="tag tag-put" style="opacity:0.6;"><span class="dot dot-put"></span>BEARISH_TECHNICAL</span>
+        {% elif 'BULLISH' in s.flow_strategy %}
+          <span class="tag tag-call" style="opacity:0.6;"><span class="dot dot-call"></span>BULLISH_TECHNICAL</span>
         {% else %}
           <span class="tag tag-call"><span class="dot dot-call"></span>{{ s.flow_strategy }}</span>
         {% endif %}
