@@ -438,9 +438,15 @@ def get_winrate_by(field: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 def backup_db():
-    from config import BACKUP_DIR, DB_PATH
+    from config import BACKUP_DIR
+    today = datetime.utcnow().strftime("%Y%m%d")
+    # skip if we already backed up today
+    if any(BACKUP_DIR.glob(f"signals-{today}_*.db")):
+        return
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     dest = BACKUP_DIR / f"signals-{ts}.db"
+    if dest.exists():
+        return
     with get_conn() as conn:
         conn.execute(f"VACUUM INTO '{dest}'")
     backups = sorted(BACKUP_DIR.glob("signals-*.db"))

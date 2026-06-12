@@ -30,7 +30,10 @@ def _do_scan(trigger: str) -> str:
                  "mcp__tradingview__volume_breakout_scanner,"
                  "mcp__tradingview__bollinger_scan,"
                  "mcp__tradingview__combined_analysis,"
-                 "mcp__tradingview__multi_timeframe_analysis,Bash"],
+                 "mcp__tradingview__multi_timeframe_analysis,"
+                 "mcp__claude_ai_Interactive_Brokers_IBKR__search_contracts,"
+                 "mcp__claude_ai_Interactive_Brokers_IBKR__get_price_snapshot,"
+                 "Bash"],
                 capture_output=True, text=True,
                 timeout=config.CLAUDE_TIMEOUT,
                 env={**os.environ, "PYTHONPATH": str(config.FLOWSCANNER_HOME)},

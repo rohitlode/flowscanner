@@ -143,6 +143,23 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
         score = 0
         reasons = ["⚠ AH FADE DETECTED — institutions distributing into strength — SKIP"]
 
+    # ── IBKR real options flow enrichment ──────────────────────────────────
+    ibkr_data = signal.get("ibkr_data")
+    ibkr_result: dict = {}
+    if ibkr_data:
+        from ibkr_flow import score_ibkr_flow
+        ibkr_result = score_ibkr_flow(
+            ticker, ibkr_data, signal.get("flow_strategy", "")
+        )
+        if ibkr_result.get("ibkr_available"):
+            score += ibkr_result.get("flow_score", 0)
+            reasons.extend(ibkr_result.get("flow_notes", []))
+            if not ibkr_result.get("flow_confirmed", True):
+                # IBKR contradicts signal direction — cap at MODERATE max
+                score = min(score, 2)
+            if ibkr_result.get("iv_crush_risk"):
+                reasons.append("⚠ IV crush risk — expensive premium")
+
     # ── Assign tier ────────────────────────────────────────────────────────
     if ah_fade:
         tier, label, sizing = "SKIP",     "⚠ AH FADE — SKIP",     "DO NOT ENTER"
@@ -153,21 +170,23 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
     else:
         tier, label, sizing = "NO_FLOW",  "📊 NO FLOW CONFIRMATION", "QUARTER SIZE"
 
-    # ── UW upgrade note ────────────────────────────────────────────────────
-    uw_note = ""
-    if not signal.get("_uw_flow_confirmed"):
-        uw_note = " (proxy — upgrades with UW sweep data)"
+    # ── Flow confirmation suffix ───────────────────────────────────────────
+    if ibkr_result.get("ibkr_available"):
+        flow_suffix = " (IBKR flow confirmed)"
+    else:
+        flow_suffix = " (proxy — wire IBKR flow for confirmation)"
 
     return {
         **signal,
         "conviction_tier":    tier,
-        "conviction_label":   label + uw_note,
+        "conviction_label":   label + flow_suffix,
         "sizing":             sizing,
         "conviction_reasons": reasons,
         "ah_fade_skip":       ah_fade,
         "flow_patterns":      [FLOW_PATTERNS[p] for p in patterns if p in FLOW_PATTERNS],
         "market_cap_m":       round(market_cap / 1e6, 1) if market_cap else None,
         "is_micro_cap":       is_micro_cap,
+        "ibkr_flow":          ibkr_result if ibkr_result.get("ibkr_available") else None,
     }
 
 

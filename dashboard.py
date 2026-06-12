@@ -163,7 +163,10 @@ async def analyze_ticker(request: Request):
                      "--allowedTools",
                      "mcp__tradingview__multi_timeframe_analysis,"
                      "mcp__tradingview__multi_agent_analysis,"
-                     "mcp__tradingview__financial_news,Bash"],
+                     "mcp__tradingview__financial_news,"
+                     "mcp__claude_ai_Interactive_Brokers_IBKR__search_contracts,"
+                     "mcp__claude_ai_Interactive_Brokers_IBKR__get_price_snapshot,"
+                     "Bash"],
                     capture_output=True, text=True, timeout=config.CLAUDE_TIMEOUT,
                     env={**os.environ, "PYTHONPATH": str(config.FLOWSCANNER_HOME)}
                 )
@@ -345,6 +348,7 @@ def _auto_scan_loop():
 
 def _nightly_backup_loop():
     import time
+    time.sleep(3600)  # wait 1h after startup before first backup attempt
     while True:
         try:
             db.backup_db()
