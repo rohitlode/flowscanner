@@ -6,7 +6,7 @@ Steps:
 3. Call mcp__tradingview__bollinger_scan with exchange=NASDAQ, timeframe=1D, bbw_threshold=0.08, limit=15 — add any new tickers not already in results
 4. For the top 5 results by volume ratio, call mcp__tradingview__combined_analysis (exchange=NASDAQ or NYSE, timeframe=1D) — this gives technicals + sentiment + news in one call
 5. Classify each signal as FLOW_REPEAT_SWEEP_CALL_CHART or FLOW_REPEAT_SWEEP_PUT_RISK_OFF based on direction
-6. Run: python3 /Users/rohitlode/flowscanner/ingest.py '<json array of signals>'
+6. Run: python3 ingest.py '<json array of signals>'
 
 Signal JSON fields (all required):
 - ticker: string (e.g. "NVDA")
@@ -15,7 +15,7 @@ Signal JSON fields (all required):
 - change_pct: number
 - volume_ratio: number (relative volume vs 10d avg)
 - flow_strategy: "FLOW_REPEAT_SWEEP_CALL_CHART" or "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
-- test_bucket: "UNVALIDATED" (always — backtester overrides)
+- test_bucket: "WATCH" or "UNVALIDATED" only — never emit "VALIDATED_TEST"
 - direction: "long" or "short"
 - confidence: number 40-95
 - analysis_summary: short string with key metrics from combined_analysis (price, RSI, MACD, support/resistance, trend)

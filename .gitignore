@@ -3,7 +3,12 @@ __pycache__/
 *.pyo
 .env
 data/signals.db
+data/signals.db-shm
+data/signals.db-wal
 data/state.json
+data/scan.lock
+data/backups/
 logs/
 *.log
+reviews/
 .DS_Store

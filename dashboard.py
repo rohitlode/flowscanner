@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -6,25 +7,28 @@ from pathlib import Path
 import secrets, os
 import db
 import state
+import config
+import guards
+import runner
+from logging.handlers import RotatingFileHandler
 
 app = FastAPI(title="FlowScanner", docs_url=None, redoc_url=None)
 security = HTTPBasic()
 
 import logging as _logging
-_scan_log_path = Path(__file__).parent / "logs" / "scan.log"
-_scan_log_path.parent.mkdir(exist_ok=True)
+_scan_log_path = config.LOGS_DIR / "scan.log"
 _scan_logger = _logging.getLogger("scan")
 _scan_logger.setLevel(_logging.DEBUG)
 _scan_logger.propagate = False
 if not _scan_logger.handlers:
-    _scan_fh = _logging.FileHandler(_scan_log_path)
+    _scan_fh = RotatingFileHandler(_scan_log_path, maxBytes=5*1024*1024, backupCount=3)
     _scan_fh.setFormatter(_logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
     _scan_logger.addHandler(_scan_fh)
 scan_log = _scan_logger.info
 scan_err = _scan_logger.error
 
-AUTH_USER = os.environ.get("DASH_USER", "rohit")
-AUTH_PASS = os.environ.get("DASH_PASS", "changeme123")
+AUTH_USER = config.AUTH_USER
+AUTH_PASS = config.AUTH_PASS
 
 def require_auth(credentials: HTTPBasicCredentials = Depends(security)):
     ok_user = secrets.compare_digest(credentials.username.encode(), AUTH_USER.encode())
@@ -111,47 +115,11 @@ def close_trade(signal_id: str):
 
 @app.post("/scan", response_class=HTMLResponse)
 def trigger_scan(request: Request):
-    import threading, subprocess, os
+    import threading
     def _run():
-        scan_log("▶ Scan started")
-        try:
-            prompt_file = Path(__file__).parent / "prompts" / "scan.md"
-            prompt = prompt_file.read_text()
-            mcp_config = "/Users/rohitlode/Desktop/claude/config/claude_desktop_config.json"
-            scan_log("→ Calling Claude CLI + TradingView MCP…")
-            result = subprocess.run(
-                ["/usr/local/bin/claude", "-p", prompt,
-                 "--mcp-config", mcp_config,
-                 "--allowedTools",
-                 "mcp__tradingview__smart_volume_scanner,"
-                 "mcp__tradingview__volume_breakout_scanner,"
-                 "mcp__tradingview__multi_timeframe_analysis,Bash"],
-                capture_output=True, text=True, timeout=180,
-                env={**os.environ, "PYTHONPATH": str(Path(__file__).parent)}
-            )
-            if result.returncode == 0:
-                scan_log(f"✓ Claude scan completed")
-            else:
-                scan_err(f"✗ Claude rc={result.returncode}: {result.stderr[:300]}")
-        except Exception as e:
-            scan_err(f"✗ Claude error: {e} — falling back to direct scan")
-            try:
-                from scanner import run_scan
-                from ingest import ingest
-                from backtester import backtest_and_store
-                scan_log("→ Direct TradingView screener (fallback)…")
-                sigs, candidates = run_scan()
-                scan_log(f"  {len(sigs)} signals from {candidates} candidates")
-                for s in sigs: s["_candidates"] = candidates
-                ingest(sigs)
-                seen = set()
-                for s in sigs:
-                    if s["ticker"] not in seen:
-                        seen.add(s["ticker"])
-                        backtest_and_store(s["ticker"])
-                scan_log(f"✓ Fallback done — {len(sigs)} signals ingested")
-            except Exception as e2:
-                scan_err(f"✗ Fallback error: {e2}")
+        scan_log("▶ Scan started (manual)")
+        result = runner.run_scan_once("manual")
+        scan_log(f"  {result}")
     threading.Thread(target=_run, daemon=True).start()
     return HTMLResponse("""<span style="color:#22c55e;font-size:11px;">
         ⟳ Scanning via Claude + TradingView MCP… results in ~30s
@@ -180,19 +148,25 @@ async def analyze_ticker(request: Request):
     def _run():
         try:
             import subprocess, os
-            prompt_file = Path(__file__).parent / "prompts" / "analyze.md"
+            prompt_file = config.PROMPTS_DIR / "analyze.md"
             prompt = prompt_file.read_text().replace("{TICKER}", ticker)
-            mcp_config = "/Users/rohitlode/Desktop/claude/config/claude_desktop_config.json"
-            subprocess.run(
-                ["/usr/local/bin/claude", "-p", prompt,
-                 "--mcp-config", mcp_config,
-                 "--allowedTools",
-                 "mcp__tradingview__multi_timeframe_analysis,"
-                 "mcp__tradingview__multi_agent_analysis,"
-                 "mcp__tradingview__financial_news,Bash"],
-                capture_output=True, text=True, timeout=180,
-                env={**os.environ, "PYTHONPATH": str(Path(__file__).parent)}
+            use_claude = (
+                config.claude_available()
+                and Path(config.MCP_CONFIG).exists()
+                and db.can_spend_credit()
             )
+            if use_claude:
+                db.record_credit("analyze", ticker)
+                subprocess.run(
+                    [config.CLAUDE_BIN, "-p", prompt,
+                     "--mcp-config", config.MCP_CONFIG,
+                     "--allowedTools",
+                     "mcp__tradingview__multi_timeframe_analysis,"
+                     "mcp__tradingview__multi_agent_analysis,"
+                     "mcp__tradingview__financial_news,Bash"],
+                    capture_output=True, text=True, timeout=config.CLAUDE_TIMEOUT,
+                    env={**os.environ, "PYTHONPATH": str(config.FLOWSCANNER_HOME)}
+                )
             # after claude runs, check if signal was ingested
             from db import get_signals
             sigs = get_signals(limit=5)
@@ -306,6 +280,16 @@ def logs_tail():
     return HTMLResponse(f'{html}<script>var el=document.getElementById("log-tail");if(el)el.scrollTop=el.scrollHeight;</script>')
 
 
+@app.get("/health")
+def health():
+    try:
+        with db.get_conn() as conn:
+            conn.execute("SELECT 1")
+        return JSONResponse({"status": "ok"})
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=503)
+
+
 @app.get("/status", response_class=JSONResponse)
 def status():
     return {
@@ -313,6 +297,11 @@ def status():
         "scan_requested": state.scan_requested(),
         "exit_check_requested": state.exit_check_requested(),
         "signal_count": len(db.get_signals()),
+        "market_open": guards.market_is_open(),
+        "credits_used_today": db.credits_used_today(),
+        "credits_remaining": db.budget_remaining(),
+        "daily_credit_cap": config.DAILY_CREDIT_CAP,
+        "scan_interval_min": config.SCAN_INTERVAL_MIN,
     }
 
 
@@ -338,49 +327,36 @@ def report(request: Request, auth=Depends(require_auth)):
 
 
 def _auto_scan_loop():
-    """Background thread: runs scans on the user-selected interval when Auto is On."""
-    import time, subprocess, os
-    interval_map = {
-        "Every 1 min":  60,
-        "Every 5 min":  300,
-        "Every 15 min": 900,
-    }
+    import time
     while True:
         try:
-            if state.auto_enabled():
-                interval_str = state.get_interval()
-                sleep_secs = interval_map.get(interval_str, 300)
-                time.sleep(sleep_secs)
-                if state.auto_enabled():  # re-check after sleep
-                    scan_log(f"▶ Auto-scan triggered ({interval_str})")
-                    try:
-                        prompt_file = Path(__file__).parent / "prompts" / "scan.md"
-                        prompt = prompt_file.read_text()
-                        mcp_config = "/Users/rohitlode/Desktop/claude/config/claude_desktop_config.json"
-                        result = subprocess.run(
-                            ["/usr/local/bin/claude", "-p", prompt,
-                             "--mcp-config", mcp_config,
-                             "--allowedTools",
-                             "mcp__tradingview__smart_volume_scanner,"
-                             "mcp__tradingview__volume_breakout_scanner,"
-                             "mcp__tradingview__multi_timeframe_analysis,Bash"],
-                            capture_output=True, text=True, timeout=180,
-                            env={**os.environ, "PYTHONPATH": str(Path(__file__).parent)}
-                        )
-                        if result.returncode == 0:
-                            scan_log("✓ Auto-scan completed")
-                        else:
-                            scan_err(f"✗ Auto-scan rc={result.returncode}: {result.stderr[:200]}")
-                    except Exception as e:
-                        scan_err(f"✗ Auto-scan error: {e}")
+            if state.auto_enabled() and guards.market_is_open():
+                interval_secs = max(60, config.SCAN_INTERVAL_MIN * 60)
+                scan_log(f"▶ Auto-scan triggered (market open, interval {config.SCAN_INTERVAL_MIN}m)")
+                result = runner.run_scan_once("auto")
+                scan_log(f"  {result}")
+                time.sleep(interval_secs)
             else:
-                time.sleep(30)  # idle: check again in 30s
-        except Exception:
+                time.sleep(300)  # 5 min re-check
+        except Exception as e:
+            scan_err(f"Auto-scan loop error: {e}")
             time.sleep(60)
+
+
+def _nightly_backup_loop():
+    import time
+    while True:
+        try:
+            db.backup_db()
+            scan_log("✓ Nightly DB backup done")
+        except Exception as e:
+            scan_err(f"Backup error: {e}")
+        time.sleep(86400)
 
 
 import threading as _threading
 _threading.Thread(target=_auto_scan_loop, daemon=True).start()
+_threading.Thread(target=_nightly_backup_loop, daemon=True).start()
 
 
 if __name__ == "__main__":

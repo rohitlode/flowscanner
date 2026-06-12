@@ -1,8 +1,10 @@
 """Lightweight file-based state flags shared between dashboard and scanner."""
+from __future__ import annotations
 import json
 from pathlib import Path
+import config
 
-_STATE_FILE = Path(__file__).parent / "data" / "state.json"
+_STATE_FILE = config.DATA_DIR / "state.json"
 
 
 def _read() -> dict:

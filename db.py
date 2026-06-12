@@ -1,14 +1,17 @@
+from __future__ import annotations
 import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
-
-DB_PATH = Path(__file__).parent / "data" / "signals.db"
+from config import DB_PATH
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -71,6 +74,43 @@ def init_db():
             test_bucket       TEXT,
             run_at            TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS outcomes (
+            id              TEXT PRIMARY KEY,
+            signal_id       TEXT NOT NULL,
+            ticker          TEXT NOT NULL,
+            opened_at       TEXT NOT NULL,
+            closed_at       TEXT,
+            entry_price     REAL NOT NULL,
+            exit_price      REAL,
+            quantity        REAL,
+            contract_symbol TEXT,
+            flow_strategy   TEXT,
+            direction       TEXT,
+            conviction_tier TEXT,
+            test_bucket     TEXT,
+            stop            REAL,
+            tp1             REAL,
+            tp2             REAL,
+            pnl_pct         REAL,
+            pnl_abs         REAL,
+            exit_reason     TEXT,
+            hold_minutes    REAL,
+            is_win          INTEGER,
+            features_json   TEXT,
+            status          TEXT DEFAULT 'open'
+        );
+
+        CREATE TABLE IF NOT EXISTS credit_log (
+            id       TEXT PRIMARY KEY,
+            used_at  TEXT NOT NULL,
+            kind     TEXT NOT NULL,
+            detail   TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_outcomes_status    ON outcomes(status, flow_strategy);
+        CREATE INDEX IF NOT EXISTS idx_credit_log_used_at ON credit_log(used_at);
+        CREATE INDEX IF NOT EXISTS idx_signals_status     ON signals(status, ticker);
         """)
         # Migrate: add new enrichment columns if they don't exist yet
         for col in [
@@ -185,20 +225,66 @@ def upsert_backtest(r: dict):
         ))
 
 
-def ack_signal(signal_id: str, entry_price: float):
+def ack_signal(signal_id: str, entry_price: float, quantity=None, stop=None, tp1=None, tp2=None):
+    import json
+    now = datetime.utcnow().isoformat()
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE signals SET entry_price=?, now_price=? WHERE id=?",
-            (entry_price, entry_price, signal_id)
-        )
+        conn.execute("UPDATE signals SET entry_price=?, now_price=? WHERE id=?",
+                     (entry_price, entry_price, signal_id))
+        existing = conn.execute(
+            "SELECT id FROM outcomes WHERE signal_id=? AND status='open'", (signal_id,)
+        ).fetchone()
+        if existing:
+            return existing["id"]
+        sig = conn.execute("SELECT * FROM signals WHERE id=?", (signal_id,)).fetchone()
+        if not sig:
+            return None
+        sig = dict(sig)
+        outcome_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO outcomes
+              (id, signal_id, ticker, opened_at, entry_price, quantity,
+               flow_strategy, direction, conviction_tier, test_bucket,
+               stop, tp1, tp2, features_json, status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            outcome_id, signal_id, sig["ticker"], now, entry_price, quantity,
+            sig.get("flow_strategy"), sig.get("direction"),
+            sig.get("conviction_tier"), sig.get("test_bucket"),
+            stop, tp1, tp2,
+            json.dumps({k: sig[k] for k in sig.keys() if sig[k] is not None}),
+            "open"
+        ))
+        return outcome_id
 
 
-def close_signal(signal_id: str):
+def close_signal(signal_id: str, exit_price: float | None = None, exit_reason: str = "manual"):
+    now = datetime.utcnow().isoformat()
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE signals SET status='closed' WHERE id=?",
-            (signal_id,)
-        )
+        conn.execute("UPDATE signals SET status='closed' WHERE id=?", (signal_id,))
+        row = conn.execute(
+            "SELECT * FROM outcomes WHERE signal_id=? AND status='open'", (signal_id,)
+        ).fetchone()
+        if not row:
+            return
+        row = dict(row)
+        ep = float(row["entry_price"])
+        xp = float(exit_price) if exit_price else ep
+        raw_pct = (xp - ep) / ep * 100 if ep else 0
+        direction = row.get("direction") or "long"
+        pnl_pct = raw_pct if direction == "long" else -raw_pct
+        qty = float(row["quantity"]) if row.get("quantity") else 1.0
+        pnl_abs = (xp - ep) * qty if direction == "long" else (ep - xp) * qty
+        opened = datetime.fromisoformat(row["opened_at"])
+        hold_min = (datetime.utcnow() - opened).total_seconds() / 60
+        conn.execute("""
+            UPDATE outcomes SET
+              closed_at=?, exit_price=?, exit_reason=?,
+              pnl_pct=?, pnl_abs=?, hold_minutes=?,
+              is_win=?, status='closed'
+            WHERE signal_id=? AND status='open'
+        """, (now, xp, exit_reason, round(pnl_pct,4), round(pnl_abs,4),
+              round(hold_min,1), 1 if pnl_pct > 0 else 0, signal_id))
 
 
 def refresh_now_prices():
@@ -297,6 +383,69 @@ def get_report_stats():
         "recent": [dict(r) for r in recent],
     }
 
+
+def record_credit(kind: str, detail: str = ""):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO credit_log (id, used_at, kind, detail) VALUES (?,?,?,?)",
+            (str(uuid.uuid4()), datetime.utcnow().isoformat(), kind, detail)
+        )
+
+def credits_used_today() -> int:
+    today = datetime.utcnow().date().isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as n FROM credit_log WHERE used_at >= ?", (today,)
+        ).fetchone()
+    return int(row["n"]) if row else 0
+
+def budget_remaining() -> int:
+    from config import DAILY_CREDIT_CAP
+    return max(0, DAILY_CREDIT_CAP - credits_used_today())
+
+def can_spend_credit() -> bool:
+    return budget_remaining() > 0
+
+def get_outcomes(status: str | None = None, limit: int = 100) -> list[dict]:
+    with get_conn() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM outcomes WHERE status=? ORDER BY opened_at DESC LIMIT ?",
+                (status, limit)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM outcomes ORDER BY opened_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+def get_winrate_by(field: str) -> list[dict]:
+    allowed = {"flow_strategy", "conviction_tier", "ticker", "test_bucket", "direction"}
+    if field not in allowed:
+        raise ValueError(f"field must be one of {allowed}")
+    with get_conn() as conn:
+        rows = conn.execute(f"""
+            SELECT {field},
+                   COUNT(*) as n,
+                   SUM(is_win) as wins,
+                   ROUND(AVG(CAST(is_win AS FLOAT))*100, 1) as win_rate,
+                   ROUND(AVG(pnl_pct), 2) as avg_pnl_pct,
+                   ROUND(SUM(pnl_pct), 2) as total_pnl
+            FROM outcomes WHERE status='closed'
+            GROUP BY {field}
+            ORDER BY win_rate DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+def backup_db():
+    from config import BACKUP_DIR, DB_PATH
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    dest = BACKUP_DIR / f"signals-{ts}.db"
+    with get_conn() as conn:
+        conn.execute(f"VACUUM INTO '{dest}'")
+    backups = sorted(BACKUP_DIR.glob("signals-*.db"))
+    for old in backups[:-14]:
+        old.unlink(missing_ok=True)
 
 def log_scan_run(exchange: str, candidates: int, signals_found: int, status: str = "done") -> str:
     run_id = str(uuid.uuid4())

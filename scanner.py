@@ -2,9 +2,11 @@
 Direct TradingView screener calls — no MCP needed.
 The MCP is just a wrapper around these same endpoints.
 """
+from __future__ import annotations
 import httpx
 import uuid
 from datetime import datetime
+import config
 
 TV_SCAN_URL = "https://scanner.tradingview.com/america/scan"
 TV_HEADERS = {
@@ -57,20 +59,13 @@ def _classify(row: dict) -> dict:
     if rsi < 35 or rsi > 65:
         score += 1
 
-    if score >= 3:
-        test_bucket = "VALIDATED_TEST"
-    elif score == 2:
+    if score >= 2:
         test_bucket = "WATCH"
     else:
         test_bucket = "UNVALIDATED"
 
-    # OI behavior proxy from price vs EMA200
-    if price > ema200 * 1.02:
-        oi_behavior = "STUCK_UP"
-    elif price < ema200 * 0.98:
-        oi_behavior = "FADING"
-    else:
-        oi_behavior = "HOLDING"
+    # OI behavior: never fabricate — real OI requires options data
+    oi_behavior = None
 
     confidence = min(95, 40 + score * 15)
 
@@ -267,7 +262,7 @@ def analyze_ticker(ticker: str) -> dict:
     news_note = ""
     try:
         import sys
-        sys.path.insert(0, "/Users/rohitlode/Projects/tradingview-mcp/src")
+        sys.path.insert(0, config.TV_MCP_SRC)
         from tradingview_mcp.core.services.news_service import fetch_news
         articles = fetch_news(symbol=t, category="stocks", limit=3)
         if articles:

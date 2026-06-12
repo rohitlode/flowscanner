@@ -8,12 +8,12 @@ Steps:
 2. Call mcp__tradingview__multi_timeframe_analysis for {TICKER} on NASDAQ
    — for multi-TF confirmation (weekly → daily → 4H → 1H)
 3. Classify signal: FLOW_REPEAT_SWEEP_CALL_CHART or FLOW_REPEAT_SWEEP_PUT_RISK_OFF
-4. Run: python3 /Users/rohitlode/flowscanner/ingest.py '<json>'
+4. Run: python3 ingest.py '<json>'
 
 Signal JSON fields:
 - ticker, exchange, price, change_pct, volume_ratio
 - flow_strategy: "FLOW_REPEAT_SWEEP_CALL_CHART" or "FLOW_REPEAT_SWEEP_PUT_RISK_OFF"
-- test_bucket: "UNVALIDATED" (backtester overrides)
+- test_bucket: "WATCH" or "UNVALIDATED" only — never emit "VALIDATED_TEST"
 - direction: "long" or "short"
 - confidence: 40-95
 - analysis_summary: key metrics — price, RSI, MACD crossover, support/resistance levels, trend state, confluence verdict
