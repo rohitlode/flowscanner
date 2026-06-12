@@ -126,6 +126,17 @@ def trigger_scan(request: Request):
     </span>""")
 
 
+@app.post("/enrich-ibkr", response_class=HTMLResponse)
+def enrich_ibkr(request: Request):
+    import threading
+    def _run():
+        scan_log("▶ IBKR enrichment started")
+        result = runner.enrich_ibkr_signals()
+        scan_log(f"  {result}")
+    threading.Thread(target=_run, daemon=True).start()
+    return HTMLResponse("<span style='color:#60a5fa;font-size:11px;'>⟳ Enriching with IBKR flow…</span>")
+
+
 @app.post("/check-exits", response_class=HTMLResponse)
 def check_exits(request: Request):
     state.set_exit_check_requested(True)

@@ -123,6 +123,7 @@ def init_db():
             "ALTER TABLE signals ADD COLUMN sizing TEXT",
             "ALTER TABLE signals ADD COLUMN ah_fade_skip INTEGER DEFAULT 0",
             "ALTER TABLE signals ADD COLUMN flow_patterns TEXT",
+            "ALTER TABLE signals ADD COLUMN ibkr_flow TEXT",
         ]:
             try:
                 conn.execute(col)
@@ -145,7 +146,7 @@ def upsert_signal(data: dict) -> str:
                 oi_delta=?, analysis_summary=?, confidence=?,
                 sentiment=?, rsi_signal=?, macd_signal_dir=?, price_vs_ema=?,
                 conviction_tier=?, conviction_label=?, sizing=?,
-                ah_fade_skip=?, flow_patterns=?
+                ah_fade_skip=?, flow_patterns=?, ibkr_flow=?
                 WHERE id=?
             """, (
                 data.get("now_price"), data.get("change_pct"), data.get("volume_ratio"),
@@ -157,6 +158,7 @@ def upsert_signal(data: dict) -> str:
                 data.get("conviction_tier"), data.get("conviction_label"),
                 data.get("sizing"), data.get("ah_fade_skip"),
                 str(data.get("flow_patterns") or ""),
+                str(data.get("ibkr_flow") or "") or None,
                 existing["id"]
             ))
             return existing["id"]
@@ -167,8 +169,8 @@ def upsert_signal(data: dict) -> str:
                 contract_quality, oi_behavior, oi_prev, oi_curr, oi_delta,
                 contract_symbol, entry_price, now_price, direction, confidence,
                 analysis_summary, sentiment, rsi_signal, macd_signal_dir, price_vs_ema,
-                conviction_tier, conviction_label, sizing, ah_fade_skip, flow_patterns)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                conviction_tier, conviction_label, sizing, ah_fade_skip, flow_patterns, ibkr_flow)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 sig_id, now, data["ticker"], data.get("exchange","NASDAQ"),
                 data.get("price"), data.get("change_pct"), data.get("volume_ratio"),
@@ -181,7 +183,8 @@ def upsert_signal(data: dict) -> str:
                 data.get("macd_signal_dir"), data.get("price_vs_ema"),
                 data.get("conviction_tier"), data.get("conviction_label"),
                 data.get("sizing"), data.get("ah_fade_skip"),
-                str(data.get("flow_patterns") or "")
+                str(data.get("flow_patterns") or ""),
+                str(data.get("ibkr_flow") or "") or None,
             ))
             return sig_id
 

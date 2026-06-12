@@ -8,12 +8,17 @@ import json
 import db
 
 
-def ingest(signals: list[dict], exchange: str = "NASDAQ"):
+def ingest(signals: list[dict], exchange: str = ""):
     from conviction import score_conviction
     from backtester import backtest_and_store
 
+    # derive exchange label from actual signals if not specified
+    if not exchange and signals:
+        exchanges = set(s.get("exchange", "") for s in signals if s.get("exchange"))
+        exchange = "+".join(sorted(exchanges)) if exchanges else "MIXED"
+
     db.log_scan_run(
-        exchange=exchange,
+        exchange=exchange or "MIXED",
         candidates=signals[0].get("_candidates", len(signals)) if signals else 0,
         signals_found=len(signals),
     )

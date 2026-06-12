@@ -28,6 +28,13 @@
           hx-target="#scan-status"
           hx-swap="innerHTML">Check Exits</button>
 
+  <button class="btn btn-secondary"
+          hx-post="/enrich-ibkr"
+          hx-target="#scan-status"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this"
+          style="color:#60a5fa;">IBKR Flow</button>
+
   <span class="spinner"></span>
   <span id="scan-status" class="status-text">Scanning NASDAQ/NYSE · TradingView MCP</span>
 
