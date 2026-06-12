@@ -154,14 +154,26 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
         if ibkr_result.get("ibkr_available"):
             score += ibkr_result.get("flow_score", 0)
             reasons.extend(ibkr_result.get("flow_notes", []))
-            if not ibkr_result.get("flow_confirmed", True):
-                # IBKR contradicts signal direction — cap at MODERATE max
-                score = min(score, 2)
+            flow_dir = ibkr_result.get("flow_direction")
+            if flow_dir == "FLIP":
+                score = 0
+                reasons = ibkr_result.get("flow_notes", [])
+            elif flow_dir == "SKIP":
+                # mildly contradicting — hard zero, DO NOT ENTER
+                score = 0
+                reasons = ibkr_result.get("flow_notes", [])
             if ibkr_result.get("iv_crush_risk"):
                 reasons.append("⚠ IV crush risk — expensive premium")
 
     # ── Assign tier ────────────────────────────────────────────────────────
-    if ah_fade:
+    ibkr_flip = ibkr_result.get("flow_direction") == "FLIP" if ibkr_result.get("ibkr_available") else False
+    ibkr_skip = ibkr_result.get("flow_direction") == "SKIP" if ibkr_result.get("ibkr_available") else False
+
+    if ibkr_flip:
+        tier, label, sizing = "SKIP", "🔴 IBKR FLIP — DO NOT ENTER", "DO NOT ENTER"
+    elif ibkr_skip:
+        tier, label, sizing = "SKIP", "⛔ IBKR SKIP — NO CONVICTION", "DO NOT ENTER"
+    elif ah_fade:
         tier, label, sizing = "SKIP",     "⚠ AH FADE — SKIP",     "DO NOT ENTER"
     elif score >= 4:
         tier, label, sizing = "HIGH",     "🔥 HIGH CONVICTION",    "FULL SIZE"

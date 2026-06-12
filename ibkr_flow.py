@@ -58,6 +58,8 @@ def score_ibkr_flow(
     cp_ratio = call_vol / put_vol if put_vol > 0 else float("inf")
     pc_ratio = put_vol  / call_vol if call_vol > 0 else float("inf")
 
+    flow_direction: str | None = None  # "FLIP" or "SKIP" when contradicting
+
     if is_call_signal:
         if cp_ratio > 2.0:
             score += 2
@@ -65,9 +67,16 @@ def score_ibkr_flow(
         elif cp_ratio > 1.5:
             score += 1
             notes.append("Call-leaning flow (1.5:1+)")
-        elif cp_ratio < 1.0:
+        elif cp_ratio < 0.5:
+            # strongly put-heavy — institutions are betting the other way
             flow_confirmed = False
-            notes.append("⚠ Put-heavy flow contradicts CALL signal")
+            flow_direction = "FLIP"
+            notes.append(f"🔴 FLIP — Put-heavy flow {pc_ratio:.1f}:1 contradicts CALL — consider PUT_RISK_OFF instead")
+        elif cp_ratio < 1.0:
+            # mildly put-heavy — don't enter
+            flow_confirmed = False
+            flow_direction = "SKIP"
+            notes.append(f"⚠ SKIP — Put-leaning flow ({cp_ratio:.2f} cp ratio) — no clear call conviction")
 
     elif is_put_signal:
         if pc_ratio > 2.0:
@@ -76,9 +85,14 @@ def score_ibkr_flow(
         elif pc_ratio > 1.5:
             score += 1
             notes.append("Put-leaning flow (1.5:1+)")
+        elif pc_ratio < 0.5:
+            flow_confirmed = False
+            flow_direction = "FLIP"
+            notes.append(f"🔴 FLIP — Call-heavy flow {cp_ratio:.1f}:1 contradicts PUT — consider CALL_CHART instead")
         elif pc_ratio < 1.0:
             flow_confirmed = False
-            notes.append("⚠ Call-heavy flow contradicts PUT signal")
+            flow_direction = "SKIP"
+            notes.append(f"⚠ SKIP — Call-leaning flow ({pc_ratio:.2f} pc ratio) — no clear put conviction")
 
     # ── Volume vs average ───────────────────────────────────────────────────
     if is_call_signal and avg_call > 0:
@@ -115,6 +129,7 @@ def score_ibkr_flow(
         "call_volume_vs_avg":  round(vol_vs_avg, 2),
         "iv_percentile":       iv_pct,
         "flow_confirmed":      flow_confirmed,
+        "flow_direction":      flow_direction,   # None | "FLIP" | "SKIP"
         "flow_score":          score,
         "flow_notes":          notes,
         "iv_crush_risk":       iv_crush_risk,
