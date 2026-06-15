@@ -146,50 +146,74 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
         score = 0
         reasons = ["⚠ AH FADE DETECTED — institutions distributing into strength — SKIP"]
 
-    # ── IBKR real options flow enrichment ──────────────────────────────────
-    ibkr_data = signal.get("ibkr_data")
-    ibkr_result: dict = {}
-    if ibkr_data:
-        from ibkr_flow import score_ibkr_flow
-        ibkr_result = score_ibkr_flow(
-            ticker, ibkr_data, signal.get("flow_strategy", "")
-        )
-        if ibkr_result.get("ibkr_available"):
-            score += ibkr_result.get("flow_score", 0)
-            reasons.extend(ibkr_result.get("flow_notes", []))
-            flow_dir = ibkr_result.get("flow_direction")
-            if flow_dir == "FLIP":
-                score = 0
-                reasons = ibkr_result.get("flow_notes", [])
-            elif flow_dir == "SKIP":
-                # mildly contradicting — hard zero, DO NOT ENTER
-                score = 0
-                reasons = ibkr_result.get("flow_notes", [])
-            if ibkr_result.get("iv_crush_risk"):
-                reasons.append("⚠ IV crush risk — expensive premium")
+    # ── Unusual Whales flow enrichment (real sweep data — highest priority) ──
+    uw_result: dict = {}
+    uw_data = signal.get("uw_data")  # pre-fetched alerts list
+    if uw_data is not None or signal.get("_fetch_uw", False):
+        from uw_flow import score_uw_flow
+        uw_result = score_uw_flow(ticker, signal.get("flow_strategy", ""), alerts=uw_data)
+
+    if uw_result.get("uw_available"):
+        score += uw_result.get("flow_score", 0)
+        reasons.extend(uw_result.get("flow_notes", []))
+        flow_dir = uw_result.get("flow_direction")
+        if flow_dir == "FLIP":
+            score = 0
+            reasons = uw_result.get("flow_notes", [])
+        elif flow_dir == "SKIP":
+            score = 0
+            reasons = uw_result.get("flow_notes", [])
+        if uw_result.get("iv_crush_risk"):
+            reasons.append("⚠ IV crush risk — elevated IV on alert")
+    else:
+        # ── IBKR call/put volume (fallback when UW unavailable) ──────────
+        ibkr_data = signal.get("ibkr_data")
+        if ibkr_data:
+            from ibkr_flow import score_ibkr_flow
+            ibkr_result: dict = score_ibkr_flow(
+                ticker, ibkr_data, signal.get("flow_strategy", "")
+            )
+            if ibkr_result.get("ibkr_available"):
+                score += ibkr_result.get("flow_score", 0)
+                reasons.extend(ibkr_result.get("flow_notes", []))
+                flow_dir = ibkr_result.get("flow_direction")
+                if flow_dir in ("FLIP", "SKIP"):
+                    score = 0
+                    reasons = ibkr_result.get("flow_notes", [])
+                if ibkr_result.get("iv_crush_risk"):
+                    reasons.append("⚠ IV crush risk — expensive premium")
+        else:
+            ibkr_result = {}
 
     # ── Assign tier ────────────────────────────────────────────────────────
-    ibkr_flip = ibkr_result.get("flow_direction") == "FLIP" if ibkr_result.get("ibkr_available") else False
-    ibkr_skip = ibkr_result.get("flow_direction") == "SKIP" if ibkr_result.get("ibkr_available") else False
+    uw_flip  = uw_result.get("uw_available") and uw_result.get("flow_direction") == "FLIP"
+    uw_skip  = uw_result.get("uw_available") and uw_result.get("flow_direction") == "SKIP"
+    ibkr_result = signal.get("_ibkr_result", {}) if not uw_result.get("uw_available") else {}
+    ibkr_flip = not uw_result.get("uw_available") and ibkr_result.get("flow_direction") == "FLIP" and ibkr_result.get("ibkr_available")
+    ibkr_skip = not uw_result.get("uw_available") and ibkr_result.get("flow_direction") == "SKIP" and ibkr_result.get("ibkr_available")
 
-    if ibkr_flip:
-        tier, label, sizing = "SKIP", "🔴 IBKR FLIP — DO NOT ENTER", "DO NOT ENTER"
-    elif ibkr_skip:
-        tier, label, sizing = "SKIP", "⛔ IBKR SKIP — NO CONVICTION", "DO NOT ENTER"
+    if uw_flip or ibkr_flip:
+        tier, label, sizing = "SKIP", "🔴 FLOW FLIP — DO NOT ENTER", "DO NOT ENTER"
+    elif uw_skip or ibkr_skip:
+        tier, label, sizing = "SKIP", "⛔ NO FLOW CONVICTION — SKIP", "DO NOT ENTER"
     elif ah_fade:
-        tier, label, sizing = "SKIP",     "⚠ AH FADE — SKIP",     "DO NOT ENTER"
+        tier, label, sizing = "SKIP", "⚠ AH FADE — SKIP", "DO NOT ENTER"
     elif score >= 4:
-        tier, label, sizing = "HIGH",     "🔥 HIGH CONVICTION",    "FULL SIZE"
+        tier, label, sizing = "HIGH",     "🔥 HIGH CONVICTION",      "FULL SIZE"
     elif score >= 2:
-        tier, label, sizing = "MODERATE", "⚡ MODERATE CONVICTION", "HALF SIZE"
+        tier, label, sizing = "MODERATE", "⚡ MODERATE CONVICTION",   "HALF SIZE"
     else:
-        tier, label, sizing = "NO_FLOW",  "📊 NO FLOW CONFIRMATION", "QUARTER SIZE"
+        tier, label, sizing = "NO_FLOW",  "📊 NO FLOW CONFIRMATION",  "QUARTER SIZE"
 
-    # ── Flow confirmation suffix ───────────────────────────────────────────
-    if ibkr_result.get("ibkr_available"):
-        flow_suffix = " (IBKR flow confirmed)"
+    # ── Flow source suffix ─────────────────────────────────────────────────
+    if uw_result.get("uw_available"):
+        flow_suffix = " (UW sweep confirmed)" if uw_result.get("sweep_count", 0) > 0 else " (UW flow confirmed)"
+    elif signal.get("ibkr_data") and any(
+        v.get("ibkr_available") for v in [signal.get("_ibkr_result", {})]
+    ):
+        flow_suffix = " (IBKR volume confirmed)"
     else:
-        flow_suffix = " (proxy — wire IBKR flow for confirmation)"
+        flow_suffix = " (proxy)"
 
     return {
         **signal,
@@ -201,7 +225,8 @@ def score_conviction(signal: dict, run_ah_check: bool = True) -> dict:
         "flow_patterns":      [FLOW_PATTERNS[p] for p in patterns if p in FLOW_PATTERNS],
         "market_cap_m":       round(market_cap / 1e6, 1) if market_cap else None,
         "is_micro_cap":       is_micro_cap,
-        "ibkr_flow":          ibkr_result if ibkr_result.get("ibkr_available") else None,
+        "uw_flow":            uw_result if uw_result.get("uw_available") else None,
+        "ibkr_flow":          signal.get("ibkr_flow"),
     }
 
 

@@ -39,14 +39,29 @@ def _do_scan(trigger: str) -> str:
                 env={**os.environ, "PYTHONPATH": str(config.FLOWSCANNER_HOME)},
             )
             if result.returncode == 0:
+                enrich_uw_signals()
                 enrich_ibkr_signals()
                 return "claude scan completed"
             return f"claude rc={result.returncode}: {result.stderr[:200]}"
         except Exception as e:
             return f"claude failed: {e}"
     status = _direct_fallback()
+    enrich_uw_signals()
     enrich_ibkr_signals()
     return status
+
+def enrich_uw_signals() -> str:
+    """
+    Enrich today's signals with Unusual Whales real sweep/flow data.
+    Pure Python HTTP — no Claude CLI, no MCP, no credits.
+    """
+    try:
+        from ingest_uw import enrich_uw_signals as _enrich
+        n = _enrich()
+        return f"UW enrichment: {n} signals updated"
+    except Exception as e:
+        return f"UW enrichment error: {e}"
+
 
 def enrich_ibkr_signals() -> str:
     """

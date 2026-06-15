@@ -125,6 +125,7 @@
   </div>
   <span class="filter-label">Sort:</span>
   <select class="bt-select" id="sortSelect" onchange="applyFilters()">
+    <option value="runat-desc" selected>Latest Run ↓</option>
     <option value="wr-desc">Win Rate ↓</option>
     <option value="total-desc">Total Return ↓</option>
     <option value="trades-desc">Trades ↓</option>
@@ -282,12 +283,13 @@
     /* Sort */
     visible.sort((a, b) => {
       switch (sort) {
+        case 'runat-desc':  return (b.dataset.runat || '').localeCompare(a.dataset.runat || '');
         case 'wr-desc':     return parseFloat(b.dataset.wr)     - parseFloat(a.dataset.wr);
         case 'total-desc':  return parseFloat(b.dataset.total)  - parseFloat(a.dataset.total);
         case 'trades-desc': return parseFloat(b.dataset.trades) - parseFloat(a.dataset.trades);
         case 'avg-desc':    return parseFloat(b.dataset.avg)    - parseFloat(a.dataset.avg);
         case 'ticker-asc':  return a.dataset.ticker.localeCompare(b.dataset.ticker);
-        default: return 0;
+        default:            return (b.dataset.runat || '').localeCompare(a.dataset.runat || '');
       }
     });
 

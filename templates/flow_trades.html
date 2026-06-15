@@ -29,6 +29,13 @@
           hx-swap="innerHTML">Check Exits</button>
 
   <button class="btn btn-secondary"
+          hx-post="/enrich-uw"
+          hx-target="#scan-status"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this"
+          style="color:#a78bfa;">UW Flow</button>
+
+  <button class="btn btn-secondary"
           hx-post="/enrich-ibkr"
           hx-target="#scan-status"
           hx-swap="innerHTML"

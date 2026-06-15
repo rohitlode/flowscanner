@@ -23,5 +23,13 @@ MARKET_TZ           = os.environ.get("MARKET_TZ", "US/Eastern")
 CLAUDE_TIMEOUT      = int(os.environ.get("CLAUDE_TIMEOUT", "180"))
 DB_PATH        = DATA_DIR / "signals.db"
 
+UW_API_KEY     = os.environ.get("UW_API_KEY", "3eb19972-a08f-47db-be6e-a563489ac6ec")
+UW_BASE_URL    = "https://api.unusualwhales.com"
+
+# Premium thresholds for UW flow scoring
+UW_SWEEP_PREMIUM_THRESHOLD  = 100_000   # $100k+ = institutional size
+UW_LARGE_PREMIUM_THRESHOLD  = 500_000   # $500k+ = very large
+UW_HIGH_VOL_OI_RATIO        = 2.0       # volume > 2× OI = opening rush
+
 def claude_available() -> bool:
     return Path(CLAUDE_BIN).exists() if Path(CLAUDE_BIN).is_absolute() else bool(shutil.which(CLAUDE_BIN))

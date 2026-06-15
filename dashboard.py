@@ -126,6 +126,17 @@ def trigger_scan(request: Request):
     </span>""")
 
 
+@app.post("/enrich-uw", response_class=HTMLResponse)
+def enrich_uw(request: Request):
+    import threading
+    def _run():
+        scan_log("▶ UW enrichment started")
+        result = runner.enrich_uw_signals()
+        scan_log(f"  {result}")
+    threading.Thread(target=_run, daemon=True).start()
+    return HTMLResponse("<span style='color:#a78bfa;font-size:11px;'>⟳ Fetching Unusual Whales flow…</span>")
+
+
 @app.post("/enrich-ibkr", response_class=HTMLResponse)
 def enrich_ibkr(request: Request):
     import threading
